@@ -10,17 +10,18 @@ module Cake.Core (
   cake,
   need,           
   list,
+  independently,
   -- * Mid-level interface
   produce,
-  produce',
+  cut,
   use,
   overwrote,
   -- * Low-level interface
   debug,
   distill,
   fileStamp,
-  cut,
-  -- shielded,
+  produce',
+  shielded,
   Question(..),
   Answer(..),
   Failure(..),
@@ -92,7 +93,7 @@ newtype Act a = Act (ErrorT Failure (RWST Context Written State IO) a)
   deriving (Functor, Applicative, Monad, MonadIO, MonadState State, MonadWriter Written, MonadReader Context, MonadError Failure)
 
 data Status = Clean | Dirty 
-            deriving Eq
+            deriving (Eq,Ord)
 
 instance Error Failure where
    noMsg = Panic
@@ -107,6 +108,8 @@ instance Alternative P where
   empty = Parsek.pzero
 
                      
+-- | Primitve for rule construction. The given action must produce
+-- files matched by the pattern.
 (==>) :: P x -> (x -> Act a) -> Rule
 p ==> a = (\s -> do a s;return ()) <$> p
 
@@ -155,7 +158,7 @@ distill q act = local (modCx q) $ do
 -- answer is properly taken into account.
 refresh :: Question -> Act Answer -> Act Answer
 refresh q act = 
-  do a <- shielded act
+  do a <- act
      tell (Dual $ M.singleton q a)
      return a
   `catchError` \ e -> do -- on error
@@ -201,6 +204,7 @@ use f = distill (FileContents f) (fileStamp f)
 -- | File was modified by some command, but in a way that does not
 -- invalidate previous computations. (This is probably only useful for
 -- latex processing).
+overwrote :: FilePath -> Act Answer
 overwrote f = refresh (FileContents f) (fileStamp f)
 
 -- | Run the argument in a clean context, and do not clobber the state
@@ -214,14 +218,24 @@ overwrote f = refresh (FileContents f) (fileStamp f)
 -- must be set independently in the context if the produced object is
 -- not present.
 shielded :: Act a -> Act a
-shielded a = do 
+shielded a = do
   (ps,s) <- RWS.get
   RWS.put (ps,Clean)
   x <- a
   (ps',_) <- RWS.get
-  RWS.put (ps',s)
+  RWS.modify (second (const s))
   return x
-
+  
+independently :: [Act a] -> Act ()  
+independently as = do
+  (ps,s) <- RWS.get
+  ds <- forM as $ \a -> do
+    RWS.modify (second (const s))
+    a  
+    snd <$> RWS.get
+  RWS.modify (second (const (maximum ds)))
+    
+    
 runAct :: Rule -> DB -> Act () -> IO DB
 runAct r db (Act act) = do 
   h <- openFile logFile WriteMode
@@ -255,6 +269,7 @@ debug x = do
   liftIO $ hPutStrLn h $ st ++ " "++ concat (map (++": ") $ reverse $ map show ps) ++ x 
 
 -- | Return a stamp (hash) for a file
+fileStamp :: FilePath -> Act Answer  
 fileStamp f = liftIO $ do
   e <- doesFileExist f
   Stamp <$> if e 
@@ -264,6 +279,7 @@ fileStamp f = liftIO $ do
 clobber = RWS.modify $ second $ const Dirty
 
 -- | Run the action in only in a clobbered state
+cut :: Act () -> Act ()
 cut x = do
   (_,s) <- RWS.get
   case s of
@@ -282,4 +298,4 @@ need f = do
       debug $ "using existing file"
       use f
       return ()
-    Just a -> a
+    Just a -> shielded a

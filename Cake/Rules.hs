@@ -11,6 +11,7 @@ import qualified Parsek
 import Parsek (completeResults, parse, Parser)
 import Data.List
 import Data.List.Split
+import Data.Char (isSpace)
 
 ------------------------------------------------------
 -- Patterns
@@ -27,7 +28,7 @@ anyExtension ss = foldr (<|>) empty (map extension ss)
 -- Actions
 
 copy :: FilePath -> FilePath -> Act()
-copy from to = produce to $ needing [from] $ do
+copy from to = shielded $ produce to $ needing [from] $ do
   mkdir $ takeDirectory to
   liftIO $ copyFile from to
 
@@ -35,7 +36,7 @@ mkdir :: FilePath -> Act ()
 mkdir d = liftIO $ createDirectoryIfMissing True d
     
 touch :: FilePath -> Act ()
-touch x = produce x $ do
+touch x = shielded $ produce x $ do
   system ["touch",x]
   
 readFile :: FilePath -> Act String
@@ -83,18 +84,13 @@ simple outExt inExt f = extension outExt ==> \(output,base) ->
 
 tex_markdown_standalone = simple ".tex" ".markdown" $ \o i -> 
   pandoc i "latex" ["--standalone"]
+
 {-
 html_markdown_standalone = simple ".html" ".markdown" $ \o i -> 
   system ["pandoc","--tab-stop=2","--standalone","-f","markdown","-t","latex", 
           "-o", o, i]
   -}
   
-{-
-tex_lhs = extension ".tex" $ \c -> do
-  
-  -- chase includes
-  -}
-
   
 pdf_tex = simple ".pdf" ".tex" $ \o i -> 
   system ["latexmk","-pdf",i]
@@ -110,39 +106,41 @@ getBibFiles input = distill (Custom ["bibfiles",input]) $ do
 
 s ++? e = if e `isSuffixOf` s then s else s ++ e
 
+dropSpaces = reverse . dropWhile isSpace . reverse . dropWhile isSpace 
+
 includedTex input = map (++? ".tex") . argsOf "input" . lines <$> Cake.Rules.readFile input
 
-chaseDeps i = do
-  is <- includedTex i
-  mapM_ chaseDeps is
+includedLhs input = filter (`notElem` stdinclude) . map (dropSpaces . drop 8) . filter ("%include" `isPrefixOf`) . map (dropWhile isSpace). lines <$> Cake.Rules.readFile input
+  where stdinclude = ["lhs2TeX.fmt","polycode.fmt"]
+
+chaseDeps includedFiles i = do
+  is <- includedFiles i
+  mapM_ (chaseDeps includedFiles) is
   
+
 
 pdflatexBibtex c = do
   let input = c ++ ".tex"
       aux = c ++ ".aux"
       pdf = c ++ ".pdf"
       bbl = c ++ ".bbl"
-  produce pdf $ do 
+  chaseDeps includedTex input
+  produce aux $ cut $ _pdflatex c
+  
+  shielded $ do
+    use aux
+    Text bibs <- getBibFiles input  
+    mapM_ need bibs      
+    produce bbl $ cut $_bibtex c
     
-    produce' aux $ do
-      produce bbl $ do
-        produce' aux $ do
-          chaseDeps input
-          cut $ _pdflatex c
+  use bbl
+  produce pdf $ cut $ do 
+    _pdflatex c
+    overwrote aux
+    return ()
+  
 
-        Text bibs <- getBibFiles input
-        -- Note that this does not depend on the actual tex file; only the list of bibs. (aux1)
-        mapM_ need bibs
-        when (not $ null bibs) $
-          cut $ _bibtex c
-      cut $ _pdflatex c
-    
-    -- hack: if nothing changed in the aux file, there is no need to
-    -- do the final pdflatex, because pdflatex has already produced the tex file.
-    cut $ do _pdflatex c
-             overwrote aux
-             return ()
-
+{-
 pdf_tex_bibtex = extension ".pdf" ==> \(_,c) -> pdflatexBibtex c
 
 pdflatexBiblatex c = do
@@ -151,7 +149,7 @@ pdflatexBiblatex c = do
       pdf = c ++ ".pdf"
   produce pdf $ do
     produce aux $ do 
-      chaseDeps input
+      chaseDeps includedTex input
       cut $ _pdflatex c
     
     produce (c ++ ".bbl") $ do
@@ -170,19 +168,20 @@ pdflatexBiblatex c = do
 pdf_tex_biblatex = anyExtension [".pdf",".aux"] ==> \(_,c) -> 
   pdflatexBibtex c
 
-
+-}
 _lhs2TeX i o = do
   system ["lhs2TeX","-o",o,i]
+
 
 lhs2tex c = do
   let lhs = c ++ ".lhs"
       tex = c ++ ".tex"
-  produce tex $ do
-    need lhs
-    _lhs2TeX lhs tex
+  chaseDeps includedLhs lhs
+  produce tex $ _lhs2TeX lhs tex
+             
 
 tex_lhs = extension ".tex" ==> \(_,c) -> lhs2tex c
 
 allRules = tex_markdown_standalone 
-         <|> pdf_tex_biblatex
+--         <|> pdf_tex_bibtex
          <|> tex_lhs
