@@ -8,20 +8,18 @@ module Cake.Core (
   -- * High-level interface
   Act,             
   cake,
-  need,           
+  need, needs,           
   list,
-  independently,
   -- * Mid-level interface
-  produce,
-  cut,
-  use,
-  overwrote,
+  produce, produces,
+  cut, independently,
+  -- use,
   -- * Low-level interface
   debug,
   distill,
   fileStamp,
-  produce',
   shielded,
+  updates,
   Question(..),
   Answer(..),
   Failure(..),
@@ -141,7 +139,6 @@ produced f = do
 modCx q (Context {..}) = Context {ctxProducing = q:ctxProducing,..}    
 
 -- | Answer a question using the action given.
--- The action must be independent of the context.
 distill :: Question -> Act Answer -> Act Answer
 distill q act = local (modCx q) $ do
   debug $ "Starting to answer"
@@ -152,8 +149,8 @@ distill q act = local (modCx q) $ do
     debug $ "Question has not the same answer"
   return a1
 
--- | Answer a question using the action given. The action must be
--- independent of the context. The result is not compared to the
+-- | Answer a question using the action given. 
+-- The result is not compared to the
 -- previous run, so it is the caller responsibility that the new
 -- answer is properly taken into account.
 refresh :: Question -> Act Answer -> Act Answer
@@ -165,26 +162,25 @@ refresh q act =
      tell (Dual $ M.singleton q $ Failed e) -- Answering the question failed...
      throwError e -- and questions depending on it will also fail
 
+produce x = produces [x]
+
 -- | Produce a file, using the given action.
--- The action should be independent of the context.
-produce :: FilePath -> Act () -> Act ()
-produce f a = do
-  p <- produced f -- Do nothing if the file is already produced.
-  when (not p) $ do
-     produce' f a
-     return ()
+produces :: [FilePath] -> Act () -> Act ()
+produces fs a = do
+  ps <- mapM produced fs -- Do nothing if the file is already produced.
+  when (not $ and ps) $ updates fs a
 
 -- | Produce a file, using with the given action.
--- The action should be independent of the context.
 -- BUT: no problem to produce the same file multiple times.
-produce' :: FilePath -> Act () -> Act Answer
-produce' f a = distill (FileContents f) $ do
+updates :: [FilePath] -> Act () -> Act ()
+updates [] a = noClobber a
+updates (f:fs) a = distill (FileContents f) (do
           e <- liftIO $ doesFileExist f
-          when (not e) clobber 
-          a
+          updates fs (when (not e) clobber >> a)
+          -- force running the action if the file is not present, even if in a clean state.
           modify $ first $ S.insert f 
           -- remember that the file has been produced already
-          fileStamp f
+          fileStamp f) >> return ()
 
 
 -- | List directory contents by extension
@@ -225,7 +221,15 @@ shielded a = do
   (ps',_) <- RWS.get
   RWS.modify (second (const s))
   return x
-  
+
+-- | 
+noClobber :: Act a -> Act a  
+noClobber a = do
+  s <- snd <$> RWS.get
+  x <- a
+  RWS.modify (second (const s))
+  return x
+
 independently :: [Act a] -> Act ()  
 independently as = do
   (ps,s) <- RWS.get
@@ -233,8 +237,9 @@ independently as = do
     RWS.modify (second (const s))
     a  
     snd <$> RWS.get
-  RWS.modify (second (const (maximum ds)))
+  RWS.modify (second (const (maximum $ s:ds)))
     
+
     
 runAct :: Rule -> DB -> Act () -> IO DB
 runAct r db (Act act) = do 
@@ -276,7 +281,7 @@ fileStamp f = liftIO $ do
     then Just <$> md5 <$> B.readFile f
     else return Nothing
 
-clobber = RWS.modify $ second $ const Dirty
+clobber = RWS.modify $ second $ (const Dirty)
 
 -- | Run the action in only in a clobbered state
 cut :: Act () -> Act ()
@@ -299,3 +304,9 @@ need f = do
       use f
       return ()
     Just a -> shielded a
+
+needs = independently . map need
+
+
+
+

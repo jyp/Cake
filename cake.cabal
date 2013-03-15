@@ -21,13 +21,13 @@ library
   build-depends: filepath==1.3.*  
   build-depends: process==1.1.*
   build-depends: binary==0.5.*
-  build-depends: containers==0.5.*
+  build-depends: containers>=0.4 && <0.6
   build-depends: directory==1.2.*
-  build-depends: bytestring==0.10.*
+  build-depends: bytestring>=0.9&&<1
   build-depends: pureMD5==2.1.*
   build-depends: split==0.1.*
 
-  exposed-modules: Cake, Cake.Core, Cake.Rules, Cake.Process, Cake.Marxup, Parsek
+  exposed-modules: Cake, Cake.Actions, Cake.Core, Cake.Rules, Cake.Process, Cake.Marxup, Parsek
 
 executable cake
   default-language: Haskell2010

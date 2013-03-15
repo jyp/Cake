@@ -1,7 +1,7 @@
 module Cake.Marxup where
        
 import Cake.Core       
-import Cake.Rules
+import Cake.Actions
 import Cake.Process
 import System.FilePath
 
