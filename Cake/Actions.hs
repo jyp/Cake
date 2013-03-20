@@ -85,9 +85,11 @@ pdflatexBibtex c = do
   produce bbl $ do
     Text bibs <- getBibFiles input  
     needs bibs      
-    cut $ do 
-      _bibtex c    
-      updates [aux,pdf] $ _pdflatex c
+    cut $ _bibtex c    
+    
+  shielded $ do
+    use bbl
+    updates [aux,pdf] $ cut $ _pdflatex c
   
 
 {-

@@ -13,12 +13,12 @@ module Cake.Core (
   -- * Mid-level interface
   produce, produces,
   cut, independently,
-  -- use,
   -- * Low-level interface
   debug,
   distill,
   fileStamp,
   shielded,
+  use,
   updates,
   Question(..),
   Answer(..),
