@@ -130,6 +130,10 @@ cake rule action = do
     putStrLn $ (show k) ++ " => " ++ (show v)
   encodeFile databaseFile newDB
 
+-- | Produce a shell script rebuilding everything
+-- eatIt :: Rule -> Act () -> String ()  
+  
+
 -- | Was the file already produced?
 produced :: FilePath -> Act Bool
 produced f = do 
