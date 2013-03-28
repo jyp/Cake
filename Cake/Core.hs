@@ -138,15 +138,17 @@ produced f = do
 
 modCx q (Context {..}) = Context {ctxProducing = q:ctxProducing,..}    
 
--- | Answer a question using the action given.
+-- | Answer a question using the action given.  
 distill :: Question -> Act Answer -> Act Answer
 distill q act = local (modCx q) $ do
-  debug $ "Starting to answer"
+  debug $ "Starting to answer: " ++ show q
   db <- ctxDB <$> ask
-  a1 <- refresh q act
-  when (Just a1 /= M.lookup q db) $ do
-    clobber
-    debug $ "Question has not the same answer"
+  a1 <- refresh q $ noClobber act
+  let same = Just a1 == M.lookup q db
+  debug $ "Old answer: " ++ show (M.lookup q db)
+  debug $ "New answer: " ++ show a1
+  when (not same) clobber
+  debug $ "Same? "  ++ show same
   return a1
 
 -- | Answer a question using the action given. 
@@ -170,10 +172,10 @@ produces fs a = do
   ps <- mapM produced fs -- Do nothing if the file is already produced.
   when (not $ and ps) $ updates fs a
 
--- | Produce a file, using with the given action.
--- BUT: no problem to produce the same file multiple times.
+-- | Produce a file, using with the given action.  BUT: no problem to
+-- produce the same file multiple times.  
 updates :: [FilePath] -> Act () -> Act ()
-updates [] a = noClobber a
+updates [] a = a 
 updates (f:fs) a = distill (FileContents f) (do
           e <- liftIO $ doesFileExist f
           updates fs (when (not e) clobber >> a)
@@ -222,7 +224,7 @@ shielded a = do
   RWS.modify (second (const s))
   return x
 
--- | 
+-- | Run the action, but do not clobber the state.
 noClobber :: Act a -> Act a  
 noClobber a = do
   s <- snd <$> RWS.get
@@ -303,7 +305,7 @@ need f = do
       debug $ "using existing file"
       use f
       return ()
-    Just a -> shielded a
+    Just a -> a
 
 needs = independently . map need
 

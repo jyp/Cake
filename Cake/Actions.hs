@@ -88,6 +88,7 @@ pdflatexBibtex c = do
     cut $ _bibtex c    
     
   shielded $ do
+    use aux
     use bbl
     updates [aux,pdf] $ cut $ _pdflatex c
   
