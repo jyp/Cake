@@ -104,17 +104,14 @@ instance Applicative P where
 instance Alternative P where
   (<|>) = (Parsek.<|>)
   empty = Parsek.pzero
-
                      
 -- | Primitve for rule construction. The given action must produce
 -- files matched by the pattern.
 (==>) :: P x -> (x -> Act a) -> Rule
 p ==> a = (\s -> do a s;return ()) <$> p
 
-
 databaseFile = ".cake"
 logFile = ".cake.log"
-
 
 -- | Run an action in the context of a set of rules.
 cake :: Rule -> Act () -> IO ()
@@ -133,7 +130,6 @@ cake rule action = do
 -- | Produce a shell script rebuilding everything
 -- eatIt :: Rule -> Act () -> String ()  
   
-
 -- | Was the file already produced?
 produced :: FilePath -> Act Bool
 produced f = do 
@@ -182,10 +178,8 @@ updates :: [FilePath] -> Act () -> Act ()
 updates [] a = a 
 updates (f:fs) a = distill (FileContents f) (do
           e <- liftIO $ doesFileExist f
-          updates fs (when (not e) clobber >> a)
-          -- force running the action if the file is not present, even if in a clean state.
-          modify $ first $ S.insert f 
-          -- remember that the file has been produced already
+          updates fs (when (not e) clobber >> a) -- force running the action if the file is not present, even if in a clean state.
+          modify $ first $ S.insert f -- remember that the file has been produced already
           fileStamp f) >> return ()
 
 
