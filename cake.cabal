@@ -1,5 +1,5 @@
 name:           cake
-version:        1.0.0
+version:        1.1.0
 category:       Development
 synopsis:       A build-system library and driver
 description:
@@ -27,7 +27,9 @@ library
   build-depends: pureMD5==2.1.*
   build-depends: split==0.1.*
 
-  exposed-modules: Cake, Cake.Actions, Cake.Core, Cake.Rules, Cake.Process, Cake.Marxup, Parsek
+  exposed-modules: 
+       Cake, Cake.Actions, Cake.Core, Cake.Rules, Cake.Process, Parsek,
+       Cake.Tex, Cake.MarXup, Cake.Haskell
 
 executable cake
   default-language: Haskell2010

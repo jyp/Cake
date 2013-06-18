@@ -138,7 +138,10 @@ produced f = do
 
 modCx q (Context {..}) = Context {ctxProducing = q:ctxProducing,..}    
 
--- | Answer a question using the action given.  
+-- | Answer a question using the action given. The action is
+-- encapsulated by the answer. That is, clobbering done by the action
+-- will be hidden if the answer to the question turns out the same as
+-- in a previous run.
 distill :: Question -> Act Answer -> Act Answer
 distill q act = local (modCx q) $ do
   debug $ "Starting to answer: " ++ show q
@@ -308,5 +311,4 @@ need f = do
 needs = independently . map need
 
 
-
-
+  
