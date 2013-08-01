@@ -38,8 +38,7 @@ import Control.Monad (when)
 import Control.Monad.RWS hiding (put,get)
 import qualified Control.Monad.RWS as RWS
 import Control.Monad.Error 
-import qualified Parsek
-import Parsek (completeResults, parse, Parser)
+import Text.ParserCombinators.Parsek (completeResults, parse, Parser)
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Binary hiding (put,get)
@@ -97,14 +96,6 @@ instance Error Failure where
    noMsg = Panic
    strMsg = CakeError                  
 
-instance Applicative P where
-  (<*>) = ap
-  pure = return
-
-instance Alternative P where
-  (<|>) = (Parsek.<|>)
-  empty = Parsek.pzero
-                     
 -- | Primitve for rule construction. The given action must produce
 -- files matched by the pattern.
 (==>) :: P x -> (x -> Act a) -> Rule

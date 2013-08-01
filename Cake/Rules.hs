@@ -7,7 +7,7 @@ import Cake.Tex
 import System.Directory
 import System.FilePath
 import Control.Applicative
-import qualified Parsek
+import qualified Text.ParserCombinators.Parsek as Parsek
 import Data.List
 import Data.List.Split
 
