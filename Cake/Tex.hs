@@ -14,6 +14,7 @@ import Cake.Actions
 _mpost x = system ["mpost", x]
 
 _pdflatex x = system ["pdflatex",x]
+_xelatex x = system ["xelatex",x]
   
 _bibtex x = system ["bibtex",x]
 

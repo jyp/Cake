@@ -34,7 +34,6 @@ import qualified Data.ByteString.Lazy as B
 import System.Directory
 import System.FilePath
 import Control.Applicative
-import Control.Monad (when)
 import Control.Monad.RWS hiding (put,get)
 import qualified Control.Monad.RWS as RWS
 import Control.Monad.Error 
