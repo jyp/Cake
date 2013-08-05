@@ -2,14 +2,8 @@ module Cake.Rules where
 
 import Cake.Core
 import Cake.Process
-import Cake.Actions
 import Cake.Tex
-import System.Directory
-import System.FilePath
-import Control.Applicative
-import qualified Parsek
-import Data.List
-import Data.List.Split
+import qualified Text.ParserCombinators.Parsek as Parsek
 
 ------------------------------------------------------
 -- Patterns

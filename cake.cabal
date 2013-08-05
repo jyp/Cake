@@ -26,9 +26,10 @@ library
   build-depends: bytestring>=0.9&&<1
   build-depends: pureMD5==2.1.*
   build-depends: split==0.1.*
+  build-depends: parsek==1.*
 
   exposed-modules: 
-       Cake, Cake.Actions, Cake.Core, Cake.Rules, Cake.Process, Parsek,
+       Cake, Cake.Actions, Cake.Core, Cake.Rules, Cake.Process,
        Cake.Tex, Cake.MarXup, Cake.Haskell
 
 executable cake
