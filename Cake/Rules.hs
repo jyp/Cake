@@ -9,7 +9,7 @@ import qualified Text.ParserCombinators.Parsek as Parsek
 -- Patterns
 extension :: String -> P (String,String)
 extension s = do
-  base <- Parsek.many Parsek.anyChar
+  base <- Parsek.many Parsek.anySymbol
   Parsek.string s
   return (base++s,base)
 
