@@ -58,17 +58,22 @@ pdflatexBibtex c = do
   produces [aux,pdf] $ do
     chaseDeps includedTex input
     cut $ _pdflatex c
-  
-  produce bbl $ do
-    Text bibs <- getBibFiles input  
-    needs bibs      
-    cut $ _bibtex c    
-    
+
+  bibliographyExists <- do
+    aux_contents <- Cake.Actions.readFile aux
+    return ("\\bibdata" `isInfixOf` aux_contents)
+
+  when bibliographyExists $ do
+    produce bbl $ do
+      Text bibs <- getBibFiles input
+      needs bibs
+      cut $ _bibtex c
+
   updates [aux,pdf] $ do
     use aux
-    use bbl
+    when bibliographyExists $ use bbl >> return ()
     cut $ _pdflatex c
-  
+
 
 {-
 pdf_tex_bibtex = extension ".pdf" ==> \(_,c) -> pdflatexBibtex c
