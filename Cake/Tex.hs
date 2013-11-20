@@ -6,6 +6,7 @@ import System.Directory
 import System.FilePath
 import Control.Applicative
 import Control.Monad.RWS (liftIO)
+import Control.Monad (when)
 import Data.List
 import Data.List.Split
 import Data.Char (isSpace)
