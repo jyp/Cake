@@ -53,12 +53,12 @@ includedLhs = filter (`notElem` stdinclude) .
   where stdinclude = ["lhs2TeX.fmt","polycode.fmt"]
         prefix = "%include"
 
-pdflatexBibtex c = do
+latexBibtex engine c = do
   let [input,aux,pdf,bbl] = map (c <.>) ["tex","aux","pdf","bbl"]
 
   produces [aux,pdf] $ do
     chaseDeps includedTex input
-    cut $ _pdflatex c
+    cut $ engine c
 
   bibliographyExists <- do
     aux_contents <- Cake.Actions.readFile aux
@@ -73,8 +73,10 @@ pdflatexBibtex c = do
   updates [aux,pdf] $ do
     use aux
     when bibliographyExists $ use bbl >> return ()
-    cut $ _pdflatex c
+    cut $ engine c
 
+pdflatexBibtex = latexBibtex _pdflatex
+xelatexBibtex = latexBibtex _xelatex
 
 {-
 pdf_tex_bibtex = extension ".pdf" ==> \(_,c) -> pdflatexBibtex c
