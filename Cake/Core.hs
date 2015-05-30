@@ -75,15 +75,18 @@ instance Show Question where
     show (Listing f ext) = "("++f++"/*"++ext++")"
     show (Custom c) = show c
 
-type DB = M.Map Question Answer
-type Produced = S.Set FilePath      
+type DB = M.Map Question Answer 
+type Produced = S.Set FilePath -- Set of already produced files
 
 type P = Parser Char
 
 -- | Rules map names of files to actions building them.
 type Rule = P (Act ()) 
 type State = (Produced,Status)
-type Written = Dual DB -- take the dual so the writer overwrites old entries in the DB.
+type Written = Dual DB -- take the dual so the writer overwrites old
+-- entries in the DB.  Note also that we do not have a state
+-- here. Answers are compared always to the previous cake run, in case
+-- a question is asked more than once.
 data Context = Context {ctxHandle :: Handle, ctxRule :: Rule, ctxDB :: DB, ctxProducing :: [Question]}
 newtype Act a = Act (ExceptT Failure (RWST Context Written State IO) a)
   deriving (Functor, Applicative, Monad, MonadIO, MonadState State, MonadWriter Written, MonadReader Context, MonadError Failure)
@@ -103,8 +106,8 @@ logFile = ".cake.log"
 -- | Run an action in the context of a set of rules.
 cake :: Rule -> Act () -> IO ()
 cake rule action = do
-  e <- doesFileExist databaseFile 
-  oldDB <- if e 
+  e <- doesFileExist databaseFile
+  oldDB <- if e
     then decodeFile databaseFile
     else return $ M.empty
   newAnswers <- runAct rule oldDB action
@@ -114,21 +117,20 @@ cake rule action = do
     putStrLn $ (show k) ++ " => " ++ (show v)
   encodeFile databaseFile newDB
 
--- | Produce a shell script rebuilding everything
--- eatIt :: Rule -> Act () -> String ()  
-  
 -- | Was the file already produced?
 produced :: FilePath -> Act Bool
-produced f = do 
+produced f = do
   (ps,_) <- RWS.get
   return $ f `S.member` ps
 
-modCx q (Context {..}) = Context {ctxProducing = q:ctxProducing,..}    
+-- | record the current question being answered
+modCx :: Question -> Context -> Context
+modCx q (Context {..}) = Context {ctxProducing = q:ctxProducing,..}
 
--- | Answer a question using the action given. The action is
--- encapsulated by the answer. That is, clobbering done by the action
--- will be hidden if the answer to the question turns out the same as
--- in a previous run.
+-- | Answer a question using the action given.
+-- The action is encapsulated. That is, clobbering done by the action
+-- is hidden.  However, if the answer to the question turns out
+-- different from the recorder answer, then clobbering is flagged.
 distill :: Question -> Act Answer -> Act Answer
 distill q act = local (modCx q) $ do
   debug $ "Starting to answer: " ++ show q
@@ -141,12 +143,12 @@ distill q act = local (modCx q) $ do
   debug $ "Same? "  ++ show same
   return a1
 
--- | Answer a question using the action given. 
--- The result is not compared to the
--- previous run, so it is the caller responsibility that the new
--- answer is properly taken into account.
+-- | Answer a question using the action given.
+-- The result is /not/ compared to the previous run, so it is the
+-- caller responsibility that the new answer is properly taken into
+-- account.
 refresh :: Question -> Act Answer -> Act Answer
-refresh q act = 
+refresh q act =
   do a <- act
      tell (Dual $ M.singleton q a)
      return a
@@ -154,18 +156,20 @@ refresh q act =
      tell (Dual $ M.singleton q $ Failed e) -- Answering the question failed...
      throwError e -- and questions depending on it will also fail
 
+-- | Produce a file, using the given action.
+produce :: FilePath -> Act () -> Act ()
 produce x = produces [x]
 
--- | Produce a file, using the given action.
+-- | Produce files, using the given action.
 produces :: [FilePath] -> Act () -> Act ()
 produces fs a = do
-  ps <- mapM produced fs -- Do nothing if the file is already produced.
+  ps <- mapM produced fs -- Do nothing if all files are already produced.
   when (not $ and ps) $ updates fs a
 
 -- | Produce a file, using with the given action.  BUT: no problem to
--- produce the same file multiple times.  
+-- produce the same file multiple times.
 updates :: [FilePath] -> Act () -> Act ()
-updates [] a = a 
+updates [] a = a
 updates (f:fs) a = distill (FileContents f) (do
           e <- liftIO $ doesFileExist f
           updates fs (when (not e) clobber >> a) -- force running the action if the file is not present, even if in a clean state.
@@ -174,16 +178,18 @@ updates (f:fs) a = distill (FileContents f) (do
 
 
 -- | List directory contents by extension
-list directory extension = do 
+list :: FilePath -> String -> Act [String]
+list directory extension = do
   Text x <- distill (Listing directory extension) $ do
-   files <- filter (filt . takeExtension) <$> liftIO (getDirectoryContents directory)
-   return $ Text (map (directory </>) files)
+    files <- filter (filt . takeExtension) <$> liftIO (getDirectoryContents directory)
+    return $ Text (map (directory </>) files)
   return x
  where filt = if null extension then const True else (== '.':extension)
 
 
 -- | Mark that a file is used. Do not chase dependencies on this file
 -- though. (To be used eg. if a command uses an optional file).
+use :: FilePath -> Act Answer
 use f = distill (FileContents f) (fileStamp f)
 
 
@@ -213,7 +219,7 @@ shielded a = do
   return x
 
 -- | Run the action, but do not clobber the state.
-noClobber :: Act a -> Act a  
+noClobber :: Act a -> Act a
 noClobber a = do
   s <- snd <$> RWS.get
   x <- a
