@@ -6,9 +6,9 @@ module Cake.Core (
   P, (==>),
   
   -- * High-level interface
-  Act,             
+  Act,
   cake,
-  need, needs,           
+  need, needs,
   list,
   -- * Mid-level interface
   produce, produces,
@@ -36,7 +36,7 @@ import System.FilePath
 import Control.Applicative
 import Control.Monad.RWS hiding (put,get)
 import qualified Control.Monad.RWS as RWS
-import Control.Monad.Error 
+import Control.Monad.Except
 import Text.ParserCombinators.Parsek (completeResults, parse, Parser)
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -53,22 +53,22 @@ data Question = FileContents FilePath
               | Custom [String]
 --              | Option [String]
               deriving (Eq, Ord)
-$( derive makeBinary ''Question )             
-                         
+$( derive makeBinary ''Question )
+
 data Failure = CakeError String | Panic | ProcessError ExitCode
              deriving (Eq)
 instance Show Failure where
   show (CakeError x) = x
   show (ProcessError code) = "Process returned exit code " ++ show code
   show (Panic) = "PANIC"
-$( derive makeBinary ''ExitCode )                                  
-$( derive makeBinary ''Failure )             
+$( derive makeBinary ''ExitCode )
+$( derive makeBinary ''Failure )
 
 data Answer = Stamp (Maybe MD5Digest) 
             | Text [String]
             | Failed Failure
             deriving (Eq, Show)
-$( derive makeBinary ''Answer )             
+$( derive makeBinary ''Answer )
 
 instance Show Question where
     show (FileContents f) = "{"++f++"}"
@@ -85,21 +85,18 @@ type Rule = P (Act ())
 type State = (Produced,Status)
 type Written = Dual DB -- take the dual so the writer overwrites old entries in the DB.
 data Context = Context {ctxHandle :: Handle, ctxRule :: Rule, ctxDB :: DB, ctxProducing :: [Question]}
-newtype Act a = Act (ErrorT Failure (RWST Context Written State IO) a)
+newtype Act a = Act (ExceptT Failure (RWST Context Written State IO) a)
   deriving (Functor, Applicative, Monad, MonadIO, MonadState State, MonadWriter Written, MonadReader Context, MonadError Failure)
 
-data Status = Clean | Dirty 
+data Status = Clean | Dirty
             deriving (Eq,Ord)
-
-instance Error Failure where
-   noMsg = Panic
-   strMsg = CakeError                  
 
 -- | Primitve for rule construction. The given action must produce
 -- files matched by the pattern.
 (==>) :: P x -> (x -> Act a) -> Rule
 p ==> a = (\s -> do a s;return ()) <$> p
 
+databaseFile, logFile :: String
 databaseFile = ".cake"
 logFile = ".cake.log"
 
@@ -237,7 +234,7 @@ independently as = do
 runAct :: Rule -> DB -> Act () -> IO DB
 runAct r db (Act act) = do 
   h <- openFile logFile WriteMode
-  (a,Dual db) <- evalRWST (runErrorT act) (Context h r db []) (S.empty,Clean)
+  (a,Dual db) <- evalRWST (runExceptT act) (Context h r db []) (S.empty,Clean)
   case a of
      Right _ -> putStrLn "Success!"
      Left e -> putStrLn $ "cake: " ++ show e

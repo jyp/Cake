@@ -28,7 +28,7 @@ library
   build-depends: split>=0.1
   build-depends: parsek>=1
 
-  exposed-modules: 
+  exposed-modules:
        Cake, Cake.Actions, Cake.Core, Cake.Rules, Cake.Process,
        Cake.Tex, Cake.MarXup, Cake.Haskell
 
