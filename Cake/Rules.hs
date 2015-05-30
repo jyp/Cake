@@ -24,7 +24,7 @@ simple outExt inExt f = extension outExt ==> \(output,base) ->
   in  produce output $ do
         need input
         f output input
-  
+
 
 tex_markdown_standalone = simple ".tex" ".markdown" $ \o i -> 
   pandoc i "latex" ["--standalone"]
@@ -45,6 +45,11 @@ pdf_tex_biblatex = anyExtension [".pdf",".aux"] ==> \(_,c) ->
 -}
 
 tex_lhs = extension ".tex" ==> \(_,c) -> lhs2tex c
+
+pdf_tex_biblatex = anyExtension [".pdf",".aux"] ==> \(_,c) -> 
+  pdflatexBibtex c
+
+pdf_tex_bibtex = extension ".pdf" ==> \(_,c) -> pdflatexBibtex c
 
 allRules = tex_markdown_standalone 
 --         <|> pdf_tex_bibtex
