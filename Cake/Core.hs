@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving, TypeSynonymInstances, TemplateHaskell, RecordWildCards, FlexibleInstances  #-}
 
 module Cake.Core (
@@ -43,32 +44,30 @@ import qualified Data.Set as S
 import Data.Binary hiding (put,get)
 import System.Exit
 import Control.Arrow (second,first)
-
-import Data.DeriveTH
-import Data.Binary
+import GHC.Generics
 import System.IO
 
 data Question = FileContents FilePath 
               | Listing FilePath String
               | Custom [String]
 --              | Option [String]
-              deriving (Eq, Ord)
-$( derive makeBinary ''Question )
+              deriving (Eq, Ord, Generic)
+instance Binary Question
 
 data Failure = CakeError String | Panic | ProcessError ExitCode
-             deriving (Eq)
+             deriving (Eq, Generic)
+instance Binary Failure
+instance Binary ExitCode
 instance Show Failure where
   show (CakeError x) = x
   show (ProcessError code) = "Process returned exit code " ++ show code
   show (Panic) = "PANIC"
-$( derive makeBinary ''ExitCode )
-$( derive makeBinary ''Failure )
 
 data Answer = Stamp (Maybe MD5Digest) 
             | Text [String]
             | Failed Failure
-            deriving (Eq, Show)
-$( derive makeBinary ''Answer )
+            deriving (Eq, Show, Generic)
+instance Binary Answer
 
 instance Show Question where
     show (FileContents f) = "{"++f++"}"
@@ -89,7 +88,7 @@ type Written = Dual DB -- take the dual so the writer overwrites old
 -- a question is asked more than once.
 data Context = Context {ctxHandle :: Handle, ctxRule :: Rule, ctxDB :: DB, ctxProducing :: [Question]}
 newtype Act a = Act (ExceptT Failure (RWST Context Written State IO) a)
-  deriving (Functor, Applicative, Monad, MonadIO, MonadState State, MonadWriter Written, MonadReader Context, MonadError Failure)
+  deriving (Functor, Applicative, Monad, MonadIO, MonadState State, MonadWriter Written, MonadReader Context, MonadError Failure, MonadFail)
 
 data Status = Clean | Dirty
             deriving (Eq,Ord)
