@@ -4,7 +4,7 @@
 module Cake.Core (
   -- * Patterns and rules.
   Rule,
-  P, (==>),
+  P, (<==),
   
   -- * High-level interface
   Act,
@@ -43,7 +43,6 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Binary hiding (put,get)
 import System.Exit
-import Control.Arrow (second,first)
 import GHC.Generics
 import System.IO
 
@@ -79,14 +78,19 @@ type Produced = S.Set FilePath -- Set of already produced files
 
 type P = Parser Char
 
--- | Rules map names of files to actions building them.
+-- | Rules parse names of files, and parser returns an action to build it.
+
 type Rule = P (Act ()) 
-type State = (Produced,Status)
+data State = State {stateProduced :: Produced, stateStatus :: Status}
 type Written = Dual DB -- take the dual so the writer overwrites old
 -- entries in the DB.  Note also that we do not have a state
 -- here. Answers are compared always to the previous cake run, in case
 -- a question is asked more than once.
-data Context = Context {ctxHandle :: Handle, ctxRule :: Rule, ctxDB :: DB, ctxProducing :: [Question]}
+data Context = Context { ctxHandle :: Handle
+                       , ctxRule :: Rule
+                       , ctxDB :: DB
+                       , ctxProducing :: [Question]
+                       }
 newtype Act a = Act (ExceptT Failure (RWST Context Written State IO) a)
   deriving (Functor, Applicative, Monad, MonadIO, MonadState State, MonadWriter Written, MonadReader Context, MonadError Failure, MonadFail)
 
@@ -95,14 +99,15 @@ data Status = Clean | Dirty
 
 -- | Primitve for rule construction. The given action must produce
 -- files matched by the pattern.
-(==>) :: P x -> (x -> Act a) -> Rule
-p ==> a = (\s -> do a s;return ()) <$> p
+(<==) :: P x -> (x -> Act a) -> Rule
+p <== a = (\s -> a s >> return ()) <$> p
 
 databaseFile, logFile :: String
 databaseFile = ".cake"
 logFile = ".cake.log"
 
--- | Run an action in the context of a set of rules.
+-- | Run an action in the context of a set of rules. This is the
+-- 'entry point' for user code.
 cake :: Rule -> Act () -> IO ()
 cake rule action = do
   e <- doesFileExist databaseFile
@@ -116,10 +121,21 @@ cake rule action = do
     putStrLn $ (show k) ++ " => " ++ (show v)
   encodeFile databaseFile newDB
 
--- | Was the file already produced?
+runAct :: Rule -> DB -> Act () -> IO DB
+runAct r db (Act act) = do 
+  h <- openFile logFile WriteMode
+  (a,Dual db') <- evalRWST (runExceptT act) (Context h r db []) (State S.empty Clean)
+  case a of
+     Right _ -> putStrLn "Success!"
+     Left e -> putStrLn $ "cake: " ++ show e
+  hClose h
+  return db'
+
+
+-- | Was the file already produced /in this run/?
 produced :: FilePath -> Act Bool
 produced f = do
-  (ps,_) <- RWS.get
+  ps <- RWS.gets stateProduced
   return $ f `S.member` ps
 
 -- | record the current question being answered
@@ -144,7 +160,7 @@ distill q act = local (modCx q) $ do
 
 -- | Answer a question using the action given.
 -- The result is /not/ compared to the previous run, so it is the
--- caller responsibility that the new answer is properly taken into
+-- caller's responsibility that the new answer is properly taken into
 -- account.
 refresh :: Question -> Act Answer -> Act Answer
 refresh q act =
@@ -172,7 +188,7 @@ updates [] a = a
 updates (f:fs) a = distill (FileContents f) (do
           e <- liftIO $ doesFileExist f
           updates fs (when (not e) clobber >> a) -- force running the action if the file is not present, even if in a clean state.
-          modify $ first $ S.insert f -- remember that the file has been produced already
+          modify $ \State{..} -> State {stateProduced = S.insert f stateProduced,..}  -- remember that the file has been produced already
           fileStamp f) >> return ()
 
 
@@ -210,41 +226,31 @@ overwrote f = refresh (FileContents f) (fileStamp f)
 -- not present.
 shielded :: Act a -> Act a
 shielded a = do
-  (ps,s) <- RWS.get
-  RWS.put (ps,Clean)
+  State ps status <- RWS.get
+  RWS.put (State ps Clean)
   x <- a
-  (ps',_) <- RWS.get
-  RWS.modify (second (const s))
+  RWS.modify $ \State{..} -> State {stateStatus=status,..}
   return x
 
 -- | Run the action, but do not clobber the state.
 noClobber :: Act a -> Act a
 noClobber a = do
-  s <- snd <$> RWS.get
+  s <- RWS.gets stateStatus
   x <- a
-  RWS.modify (second (const s))
+  RWS.modify $ \State{..} -> State {stateStatus=s,..}
   return x
 
 independently :: [Act a] -> Act ()  
 independently as = do
-  (ps,s) <- RWS.get
+  s <- RWS.gets stateStatus
   ds <- forM as $ \a -> do
-    RWS.modify (second (const s))
-    a  
-    snd <$> RWS.get
-  RWS.modify (second (const (maximum $ s:ds)))
+    RWS.modify $ \State{..} -> State {stateStatus=s,..}
+    _ <- a  
+    RWS.gets stateStatus
+  RWS.modify   $ \State{..} -> State {stateStatus=(maximum $ s:ds),..}
     
 
     
-runAct :: Rule -> DB -> Act () -> IO DB
-runAct r db (Act act) = do 
-  h <- openFile logFile WriteMode
-  (a,Dual db) <- evalRWST (runExceptT act) (Context h r db []) (S.empty,Clean)
-  case a of
-     Right _ -> putStrLn "Success!"
-     Left e -> putStrLn $ "cake: " ++ show e
-  hClose h
-  return db    
 
 findRule :: FilePath -> Act (Maybe (Act ()))
 findRule f = do
@@ -253,7 +259,7 @@ findRule f = do
   case rs of
     Right [x] -> return (Just x)
     Right _ -> throwError $ CakeError $ "More than one rule for file " ++ f
-    Left e -> do 
+    Left _e -> do 
       debug $ "No rule for file: " ++ f
       -- debug $ "Parser says: " ++ show e
       return Nothing
@@ -262,7 +268,7 @@ debug :: String -> Act ()
 debug x = do 
   h <- ctxHandle <$> ask
   ps <- ctxProducing <$> ask
-  (_,s) <- RWS.get
+  s <- RWS.gets stateStatus
   let st = case s of
               Clean -> "O"
               Dirty -> "X"
@@ -276,12 +282,13 @@ fileStamp f = liftIO $ do
     then Just <$> md5 <$> B.readFile f
     else return Nothing
 
-clobber = RWS.modify $ second $ (const Dirty)
+clobber :: Act ()
+clobber = RWS.modify $ \State{..} -> State {stateStatus=Dirty,..}
 
 -- | Run the action in only in a clobbered state
 cut :: Act () -> Act ()
 cut x = do
-  (_,s) <- RWS.get
+  s <- RWS.gets stateStatus
   case s of
     Clean -> debug $ "Clean state; skipping."
     Dirty -> x
@@ -296,10 +303,11 @@ need f = do
       e <- liftIO $ doesFileExist f
       when (not e) $ throwError $ CakeError $ "No rule to create " ++ f
       debug $ "using existing file"
-      use f
+      _ <- use f
       return ()
     Just a -> a
 
+needs :: [FilePath] -> Act ()
 needs = independently . map need
 
 
