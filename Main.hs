@@ -3,9 +3,8 @@ import System.Process
 import System.Console.CmdArgs.Implicit
 import Data.List (intercalate)
 -- import Paths_cake
-import Data.Version (Version(..))
+-- import Data.Version (Version(..))
 import Text.Regex.TDFA
-import Control.Applicative
 import Data.Array
 import System.FilePath
 import System.Directory
@@ -28,8 +27,8 @@ paren x = "(" ++ x ++ ")"
 
 regex :: Regex
 regex = makeRegex "import[ \t]+(qualified[ \t]+)?([^ \t]+)[ \t]*--[ \t]*FROM[ \t]*([^ \t]+)[ \t]*"
-             
 
+define :: Show a => ([Char], a) -> [Char]
 define (modul,dir) = "-DROOT_" ++ modul ++ "=" ++ show (show dir)
 
 mainCake Args{..} = do  
@@ -46,12 +45,14 @@ mainCake Args{..} = do
   putStrLn $ "cake: running " ++ command
   system command
 
-mainCabal Args{..} = do
-  putStrLn $ cakefile ++ " not found, running cabal install"
-  system "cabal install"
 
 main = do
   Args {..} <- cmdArgsRun opts
   e <- doesFileExist cakefile
-  (if e then mainCake else mainCabal) Args{..}
+  (if e then mainCake else error "Cakefile.hs not found") Args{..}
   return ()
+
+
+-- Local Variables:
+-- dante-target: "exe:cake"
+-- End:
